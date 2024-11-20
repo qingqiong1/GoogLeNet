@@ -31,7 +31,7 @@ class googlenet(nn.Module):
         super(googlenet,self).__init__()
 
         self.block1 = nn.Sequential(
-            nn.Conv2d(in_channels=1,out_channels=64,kernel_size=7,stride=3,padding=3),
+            nn.Conv2d(in_channels=3,out_channels=64,kernel_size=7,stride=3,padding=3),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=3,stride=2,padding=1),
         )
@@ -60,7 +60,7 @@ class googlenet(nn.Module):
             Inception(832,384,(192,384),(48,128),128),
             nn.AdaptiveAvgPool2d((1,1)),
             nn.Flatten(),
-            nn.Linear(1024,10)
+            nn.Linear(1024,2)
         )
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -81,6 +81,6 @@ class googlenet(nn.Module):
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = googlenet(Inception).to(device)
-    print(summary(model,(1,224,224)))
+    print(summary(model,(3,224,224)))
 
 

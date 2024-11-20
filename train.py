@@ -1,32 +1,34 @@
 from torchvision import datasets
 from torchvision import transforms
 import torch.utils.data
-import numpy as np
-import os
 import copy
 import torch
 from torch import nn
-from torchsummary import summary
-import torch.nn.functional as F
 import time
 from model import googlenet
 from model import Inception
 import pandas as pd
 import matplotlib.pyplot as plt
-
-
+import warnings
+from PIL import Image
 def train_val_process():
-    dataset = datasets.FashionMNIST("./data", train=True, download=True,
-                                    transform=transforms.Compose([transforms.Resize(size=224), transforms.ToTensor(),
-                                                                  transforms.Normalize((0.5,), (0.5,))]))
-    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(dataset, [int(0.8 * len(dataset)),
-                                                                                       int(0.1 * len(dataset)),
-                                                                                       len(dataset) - int(
-                                                                                           0.9 * len(dataset))])
+    ROOT_TRAIN = r'data\train'
+    ROOT_TEST = r'data\test'
+    mean=[0.1620883,0.15117277,0.13852146]
+    std =[0.05796373,0.05223298,0.04782545]
+    normalize = transforms.Normalize(mean,std)
+    r_transform = transforms.Compose([transforms.Resize((224,224)), transforms.ToTensor(),normalize])
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True,num_workers=2)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1, shuffle=False)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False)
+    warnings.filterwarnings("ignore", category=UserWarning, module="PIL.TiffImagePlugin")
+
+    train_data = datasets.ImageFolder(ROOT_TRAIN, transform=r_transform)
+    test_data = datasets.ImageFolder(ROOT_TEST, transform=r_transform)
+
+    train_dataset, val_dataset = torch.utils.data.random_split(train_data, [int(0.8 * len(train_data)),len(train_data) - int(0.8 * len(train_data))])
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True,num_workers=2)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=64, shuffle=False)
+    test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=False)
     return train_loader, val_loader, test_loader
 
 
@@ -45,6 +47,7 @@ def train(model, train_loader, val_loader, epochs, lr):
     best_model = copy.deepcopy(model.state_dict())
 
     for epoch in range(epochs):
+        print("第{}轮训练开始".format(epoch + 1))
         train_loss = 0
         train_acc = 0
         val_loss = 0
@@ -141,10 +144,51 @@ def matplot_acc_loss(process):
 
     plt.show()
 
+def test_print(model, test_loader,classes):
+    '''
+    use:用于打印预测值与真实值
+    :param model: 模型
+    :param test_loader: 测试数据
+    :param classes: 每一类的名称
+    :return:没有返回值
+    '''
+    model.eval()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.load_state_dict(torch.load('best_model.pt'))
+    with torch.no_grad():
+        for i, (images, labels) in enumerate(test_loader):
+            images = images.to(device)
+            labels = labels.to(device)
+            outputs = model(images)
+            predicted = torch.argmax(outputs, dim=1)
+            print("epoch:",i,"--","预测值：",classes[predicted.item()],"---","真实值：",classes[labels.item()],"---","是否正确:",predicted.item()==labels.item())
+
+
+def recog_image(image_path,model,classes):
+    model.eval()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.load_state_dict(torch.load('best_model.pt'))
+
+    image = Image.open(image_path, 'r')
+    mean = [0.1620883, 0.15117277, 0.13852146]
+    std = [0.05796373, 0.05223298, 0.04782545]
+    normalize = transforms.Normalize(mean, std)
+    r_transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(), normalize])
+    image = r_transform(image).unsqueeze(0)
+    with torch.no_grad():
+        images = image.to(device)
+        outputs =model(images)
+        predicted = torch.argmax(outputs, dim=1)
+        print("预测值：", classes[predicted.item()])
+
 
 if __name__ == '__main__':
     model = googlenet(Inception)
-    train_loader, val_loader, test_loader = train_val_process()
-    train_process = train(model, train_loader, val_loader, epochs=1, lr=0.001)
-    test(model, test_loader)
-    matplot_acc_loss(train_process)
+    #train_loader, val_loader, test_loader = train_val_process()
+    # #train_process = train(model, train_loader, val_loader, epochs=20, lr=0.001)
+    # #test(model, test_loader)
+    # test_print(model,test_loader,["猫","狗"])
+    # #matplot_acc_loss(train_process)
+    recog_image('1.jpg',model,["猫","狗"])
